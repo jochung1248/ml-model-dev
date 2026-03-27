@@ -57,8 +57,8 @@ steps:
 
 
         # Set lifecycle policies (optional: auto-delete old data)
-        echo '[{"action": {"type": "Delete"}, "condition": {"age: 90"}}] > lifecycle.json'
-        gsutil lifecycle set lifecycle.json gs://${_GCP_PROJECT_ID}-${_REPO_NAME}-raw-data
+        # echo '[{"action": {"type": "Delete"}, "condition": {"age: 90"}}] > lifecycle.json'
+        # gsutil lifecycle set lifecycle.json gs://${_GCP_PROJECT_ID}-${_REPO_NAME}-raw-data
 
   # Step 4: Create BigQuery dataset
   - name: 'gcr.io/cloud-builders/gcloud'
