@@ -3,4 +3,3 @@ Building a one-stop shop template repository linked to Google Cloud Vertex AI Pl
 
 Testing out the Google Cloud Host Connection.
 
-Another test. Yo.
