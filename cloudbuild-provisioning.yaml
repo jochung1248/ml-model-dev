@@ -1,0 +1,174 @@
+# Cloud Build - Infrastructure Provisioning
+# Triggered by: Bitbucket webook when changes to template repo are pushed
+# Purpose: Set up GCP resources for new ML project
+
+
+steps:
+  # Step 1: Validate webhook payload and extract repo metadata
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'validate-webhook'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Webhook payload is available in Cloud Build environment 
+        # If using webhook triggers, payload is in JSON format
+        echo "========================================"
+        echo "Starting infrastructure provisioning"
+        echo "========================================"
+        echo "Repository: ${_REPO_NAME}"
+        echo "Project ID: ${_GCP_PROJECT_ID}"
+        echo "Region: ${_REGION}"
+        echo "Data Scientist Email: ${_USER_EMAIL}"
+
+        # Validate required variables
+        if [ -z "$REPO_NAME" ] || [ -z "$GCP_PROJECT_ID" ] || [ -z "$USER_EMAIL" ]; then
+          echo "Error: Missing required environment variables."
+          exit 1
+        fi
+  
+  # Step 2: Enable required GCP APIs
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: enable-apis
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Enabling GCP APIs.."
+        gcloud services enable \
+          storage.googleapis.com \
+          bigquery.googleapis.com \
+          iam.googleapis.com \
+          --project=${_GCP_PROJECT_ID}
+        echo "APIs enabled successfully"
+
+  # Step 3: Create GCS buckets for data storage
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'create-gcs-buckets'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Raw data bucket
+        gsutil mb -p ${_GCP_PROJECT_ID} -l ${_REGION} gs://${_GCP_PROJECT_ID}-${_REPO_NAME}-raw-data || echo "Bucket already exists"
+
+        # Processed data bucket
+        gsutil mb -p ${_GCP_PROJECT_ID} -l ${_REGION} gs://${_GCP_PROJECT_ID}-${_REPO_NAME}-processed-data || echo "Bucket already exists"
+
+
+        # Set lifecycle policies (optional: auto-delete old data)
+        echo '[{"action": {"type": "Delete"}, "condition": {"age: 90"}}] > lifecycle.json'
+        gsutil lifecycle set lifecycle.json gs://${_GCP_PROJECT_ID}-${_REPO_NAME}-raw-data
+
+  # Step 4: Create BigQuery dataset
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'create-bigquery-dataset'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        bq mk --project_id=${_GCP_PROJECT_ID} \
+          --location=${_REGION} \
+          --dataset \
+          --description="ML project dataset for ${_REPO_NAME}" \
+          ${_REPO_NAME//-/_} || echo "Dataset already exists"
+  
+  # Step 5: Create service accounts for data access
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'create-service-account'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud iam service-accounts create ${_REPO_NAME}-data-sa \
+          --display-name="Data Access SA for ${_REPO_NAME}" \
+          --project=${_GCP_PROJECT_ID} 2>/dev/null || echo "Service account already exists"
+  
+  # Step 6: Grant permissions to service account
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'grant-permissions'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Granting data access permissions"
+
+        SA_EMAIL=${_REPO_NAME}-data-sa@${_GCP_PROJECT_ID}.iam.gserviceaccount.com
+
+        # GCS bucket permissions
+        gsutil iam ch serviceAccount:${SA_EMAIL}:objectViewer \
+          gs://${_GCP_PROJECT_ID}-${_REPO_NAME}-raw-data
+        
+        gsutil iam ch serviceAccount:${SA_EMAIL}:objectAdmin \
+          gs://${_GCP_PROJECT_ID}-${_REPO_NAME}-processed-data
+        
+        # BigQuery dataset permissions
+        echo "Granting BigQuery permissions"
+        gcloud projects add-iam-policy-binding ${_GCP_PROJECT_ID} \
+          --member="serviceAccount:${SA_EMAIL}" \
+          --role="roles/bigquery.dataViewer"\
+          --condition=None
+        
+        gcloud projects add-iam-policy-binding ${_GCP_PROJECT_ID} \
+          --member="serviceAccount:${SA_EMAIL}" \
+          --role="roles/bigquery.jobUser"\
+          --condition=None
+  
+  # Step 7: Store metadata for reference
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'store-metadata'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Storing project metadata for reference"
+        
+        cat > project-metadata.json <<EOF
+        {
+          "repo_name": "${_REPO_NAME}",
+          "gcp_project_id": "${_GCP_PROJECT_ID}",
+          "region": "${_REGION}",
+          "user_email": "${_USER_EMAIL}",
+          "created_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          "buckets": {
+            "raw_data": "${_GCP_PROJECT_ID}-${_REPO_NAME}-raw-data",
+            "processed_data": "${_GCP_PROJECT_ID}-${_REPO_NAME}-processed-data"
+          },
+          "bigquery_dataset": "${_REPO_NAME//-/_}",
+          "service_account": "${_REPO_NAME}-data-sa@${_GCP_PROJECT_ID}.iam.gserviceaccount.com"
+        }
+        EOF
+
+        gsutil cp project-metadata.json gs://${_GCP_PROJECT_ID}-${_REPO_NAME}-processed-data/metadata/
+  
+  # Step 8: Summary
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'summary'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "========================================"
+        echo "Infrastructure provisioning completed successfully!"
+        echo "Project ID: ${_GCP_PROJECT_ID}"
+        echo "Region: ${_REGION}"
+        echo "Data Scientist Email: ${_USER_EMAIL}"
+        echo "GCS Buckets:"
+        echo "  - Raw Data: gs://${_GCP_PROJECT_ID}-${_REPO_NAME}-raw-data"
+        echo "  - Processed Data: gs://${_GCP_PROJECT_ID}-${_REPO_NAME}-processed-data"
+        echo "BigQuery Dataset: ${_REPO_NAME//-/_}"
+        echo "Service Account: ${_REPO_NAME}-data-sa@${_GCP_PROJECT_ID}.iam.gserviceaccount.com"
+        echo "Metadata stored at: gs://${_GCP_PROJECT_ID}-${_REPO_NAME}-processed-data/metadata/project-metadata.json"
+        echo "========================================"
+
+substitutions:
+  _REPO_NAME: 'ml-model-dev'
+  _GCP_PROJECT_ID: 'ml-model-dev-491502'
+  _REGION: 'us-central1'
+  _USER_EMAIL: 'jochung1248@gmail.com'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_MEDIUM'
+
+timeout: '600s'
