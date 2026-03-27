@@ -93,24 +93,24 @@ steps:
       - |
         echo "Granting data access permissions"
 
-        SA_EMAIL=${_REPO_NAME}-data-sa@${_GCP_PROJECT_ID}.iam.gserviceaccount.com
+        _SA_EMAIL=${_REPO_NAME}-data-sa@${_GCP_PROJECT_ID}.iam.gserviceaccount.com
 
         # GCS bucket permissions
-        gsutil iam ch serviceAccount:${SA_EMAIL}:objectViewer \
+        gsutil iam ch serviceAccount:${_SA_EMAIL}:objectViewer \
           gs://${_GCP_PROJECT_ID}-${_REPO_NAME}-raw-data
         
-        gsutil iam ch serviceAccount:${SA_EMAIL}:objectAdmin \
+        gsutil iam ch serviceAccount:${_SA_EMAIL}:objectAdmin \
           gs://${_GCP_PROJECT_ID}-${_REPO_NAME}-processed-data
         
         # BigQuery dataset permissions
         echo "Granting BigQuery permissions"
         gcloud projects add-iam-policy-binding ${_GCP_PROJECT_ID} \
-          --member="serviceAccount:${SA_EMAIL}" \
+          --member="serviceAccount:${_SA_EMAIL}" \
           --role="roles/bigquery.dataViewer"\
           --condition=None
         
         gcloud projects add-iam-policy-binding ${_GCP_PROJECT_ID} \
-          --member="serviceAccount:${SA_EMAIL}" \
+          --member="serviceAccount:${_SA_EMAIL}" \
           --role="roles/bigquery.jobUser"\
           --condition=None
   
