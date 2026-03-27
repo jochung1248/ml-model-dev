@@ -22,7 +22,7 @@ steps:
         echo "Data Scientist Email: ${_USER_EMAIL}"
 
         # Validate required variables
-        if [ -z "$REPO_NAME" ] || [ -z "$GCP_PROJECT_ID" ] || [ -z "$USER_EMAIL" ]; then
+        if [ -z "$REPO_NAME" ] || [ -z "${_GCP_PROJECT_ID}" ] || [ -z "${_USER_EMAIL}" ]; then
           echo "Error: Missing required environment variables."
           exit 1
         fi
