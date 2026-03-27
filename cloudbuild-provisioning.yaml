@@ -96,11 +96,13 @@ steps:
         _SA_EMAIL=${_REPO_NAME}-data-sa@${_GCP_PROJECT_ID}.iam.gserviceaccount.com
 
         # GCS bucket permissions
-        gsutil iam ch serviceAccount:${_SA_EMAIL}:objectViewer \
-          gs://${_GCP_PROJECT_ID}-${_REPO_NAME}-raw-data
+        echo "Granting GCS bucket permissions" # Added for clarity
+        gsutil iam ch objectViewer gs://${_GCP_PROJECT_ID}-${_REPO_NAME}-raw-data \
+          --member="serviceAccount:${_SA_EMAIL}"
         
-        gsutil iam ch serviceAccount:${_SA_EMAIL}:objectAdmin \
-          gs://${_GCP_PROJECT_ID}-${_REPO_NAME}-processed-data
+        gsutil iam ch objectAdmin gs://${_GCP_PROJECT_ID}-${_REPO_NAME}-processed-data \
+          --member="serviceAccount:${_SA_EMAIL}"
+    
         
         # BigQuery dataset permissions
         echo "Granting BigQuery permissions"
